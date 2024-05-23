@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template to create a CodePipeline for deploying VPC, ALB, Auto Scaling Group, DynamoDB, e a segurança adequada.
+
+Parameters:
+  SecretARN:
+    Description: ARN of the secret containing the GitHub credentials
+    Type: String
+  MyStackName:
+    Description: CloudFormation stack name
+    Type: String
+
+Resources:
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [codepipeline.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: CodePipelinePermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [
+                  "codebuild:BatchGetBuilds",
+                  "codebuild:StartBuild",
+                  "codedeploy:CreateDeployment",
+                  "codedeploy:GetApplication",
+                  "codedeploy:GetApplicationRevision",
+                  "codedeploy:GetDeployment",
+                  "codedeploy:GetDeploymentConfig",
+                  "codedeploy:RegisterApplicationRevision",
+                  's3:GetObject',
+                  's3:PutObject',
+                  's3:DeleteObject',
+                  's3:ListBucket',
+                  'secretsmanager:GetSecretValue'
+                ]
+                Resource: '*'
+        - PolicyName: AccessToSecretsManager
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SecretARN
+
+  CodePipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "gabrielmmh-codepipeline-bucket"
+      AccessControl: Private
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [codebuild.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+        - PolicyName: AccessToSecretsManager
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SecretARN
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: BuildProject
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: SecretARN
+            Value: !Ref SecretARN
+          - Name: MyStackName
+            Value: !Ref MyStackName
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref "AWS::Region"
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref "AWS::AccountId"
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - aws cloudformation deploy --template-file ./vpc.yaml --stack-name $MyStackName --capabilities CAPABILITY_NAMED_IAM --parameter-overrides SecretARN=$SecretARN MyStackName=$MyStackName
+          artifacts:
+            files:
+              - '**/*'
+
+  MyCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: MyPipeline3
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceInfraCode
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: InfraSourceOutput
+              Configuration:
+                Owner: !Sub "{{resolve:secretsmanager:${SecretARN}:SecretString:username}}"
+                Repo: proj_infra_cloud
+                Branch: main
+                OAuthToken: !Sub "{{resolve:secretsmanager:${SecretARN}:SecretString:token}}"
+                PollForSourceChanges: true
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: InfraSourceOutput
+              OutputArtifacts:
+                - Name: InfraBuildOutput
+              Configuration:
+                ProjectName: !Ref BuildProject
+
+Outputs:
+  PipelineUrl:
+    Description: "URL of the created CodePipeline in AWS Console"
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${MyCodePipeline}/view"

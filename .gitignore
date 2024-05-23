@@ -1,0 +1,40 @@
+# Ignore secret.json file
+secret.json
+
+# Ignore all .pem and .ppk files
+*.pem
+*.ppk
+
+# Ignore other typical files and directories
+# Node modules
+node_modules/
+
+# Logs
+logs
+*.log
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Python-specific
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+*.env
+
+# IDE-specific
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Ignore temporary files
+*.tmp
+*.temp

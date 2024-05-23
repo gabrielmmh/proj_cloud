@@ -1,0 +1,583 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template to create a VPC with ALB, Auto Scaling Group, DynamoDB, and proper security.
+
+Parameters:
+  SecretARN:
+    Type: String
+    Description: ARN of the secret containing the GitHub credentials
+  MyStackName:
+    Description: CloudFormation stack name
+    Type: String
+
+Resources:
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: gabrielmmhVPC
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnetOne
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnetTwo
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyInternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociationOne:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+
+  SubnetRouteTableAssociationTwo:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Access to ALB and instances"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: GatewayAttachment
+    Properties:
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      Scheme: internet-facing
+      Type: application
+      Tags:
+        - Key: Name
+          Value: MyALB
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref MyVPC
+      Port: 80
+      Protocol: HTTP
+      HealthCheckEnabled: true
+      HealthCheckPath: "/"
+      HealthCheckIntervalSeconds: 30
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: "200"
+      TargetType: instance
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      LaunchConfigurationName: !Ref LaunchConfig
+      MinSize: '1'
+      MaxSize: '4'
+      DesiredCapacity: '2'
+      TargetGroupARNs:
+        - !Ref TargetGroup
+    
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-0d52ddcdf3a885741  
+      InstanceType: t2.micro
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          # Update system packages and install Python 3, pip, and Git
+          yum update -y
+          yum install -y python3 python3-pip httpd git jq
+
+          # Set the instance region
+          aws configure set region ${AWS::Region}
+
+          # Fetch GitHub credentials from AWS Secrets Manager
+          GITHUB_CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id ${SecretARN} --query SecretString --output text)
+          GITHUB_USERNAME=$(echo $GITHUB_CREDENTIALS | jq -r .username)
+          GITHUB_TOKEN=$(echo $GITHUB_CREDENTIALS | jq -r .token)
+
+          # Configure Git to use the retrieved token
+          echo "machine github.com login $GITHUB_USERNAME password $GITHUB_TOKEN" > ~/.netrc
+          chmod 600 ~/.netrc
+
+          # Clone or update the application repository
+          if [ -d "proj_app_cloud" ]; then
+            cd proj_app_cloud
+            git pull
+          else
+            git clone https://github.com/$GITHUB_USERNAME/proj_app_cloud.git
+            cd proj_app_cloud
+          fi
+
+          # Install dependencies from requirements.txt
+          pip3 install --user -r requirements.txt
+
+          # Setup Apache to serve as a reverse proxy
+          echo "LoadModule proxy_module modules/mod_proxy.so" >> /etc/httpd/conf.modules.d/00-proxy.conf
+          echo "LoadModule proxy_http_module modules/mod_proxy_http.so" >> /etc/httpd/conf.modules.d/00-proxy.conf
+          echo "<VirtualHost *:80>" > /etc/httpd/conf.d/reverse-proxy.conf
+          echo "    ProxyRequests Off" >> /etc/httpd/conf.d/reverse-proxy.conf
+          echo "    ProxyPass / http://127.0.0.1:8000/" >> /etc/httpd/conf.d/reverse-proxy.conf
+          echo "    ProxyPassReverse / http://127.0.0.1:8000/" >> /etc/httpd/conf.d/reverse-proxy.conf
+          echo "</VirtualHost>" >> /etc/httpd/conf.d/reverse-proxy.conf
+
+          # Start and enable Apache to run on system boot
+          systemctl start httpd
+          systemctl enable httpd
+
+          # Start the FastAPI application using Uvicorn
+          /root/.local/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+
+      IamInstanceProfile: !Ref EC2InstanceProfile
+
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      PolicyType: "SimpleScaling"
+      ScalingAdjustment: 1
+      AdjustmentType: "ChangeInCapacity"
+      Cooldown: 180
+
+  CPUUtilizationAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if CPU exceeds 5% for 60 seconds."
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 30
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - Ref: ScaleUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+  
+  # Uncomment this section to create an additional CloudWatch alarm for scaling up based on request count
+  # HTTP5xxAlarmHigh:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmDescription: "Alarm if the number of HTTP 5xx errors exceeds 100 for 5 minutes."
+  #     MetricName: HTTPCode_Target_5XX_Count
+  #     Namespace: AWS/ApplicationELB
+  #     Statistic: Sum
+  #     Period: 300
+  #     EvaluationPeriods: 1
+  #     Threshold: 100
+  #     ComparisonOperator: GreaterThanThreshold
+  #     AlarmActions:
+  #       - Ref: ScaleUpPolicy
+  #     Dimensions:
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt ALB.LoadBalancerFullName
+
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      PolicyType: SimpleScaling
+      ScalingAdjustment: -1
+      AdjustmentType: ChangeInCapacity
+      Cooldown: 300
+  
+  CPUUtilizationAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alarm if CPU falls below 1% for 4 minutes."
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 120
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - Ref: ScaleDownPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+      
+  # Uncomment this section to create an additional CloudWatch alarm for scaling down based on request count
+  # HTTP2xxAlarmLow:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmDescription: "Alarm if the number of HTTP 2xx responses falls below 50 for 10 minutes."
+  #     MetricName: HTTPCode_Target_2XX_Count
+  #     Namespace: AWS/ApplicationELB
+  #     Statistic: Sum
+  #     Period: 600
+  #     EvaluationPeriods: 1
+  #     Threshold: 50
+  #     ComparisonOperator: LessThanThreshold
+  #     AlarmActions:
+  #       - Ref: ScaleDownPolicy
+  #     Dimensions:
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt ALB.LoadBalancerFullName
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "DynamoDBAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "dynamodb:*"
+                Resource: "*"
+        - PolicyName: "SecretsManagerAccess"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "secretsmanager:GetSecretValue"
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretARN}"
+        - PolicyName: SecretsManagerReadWrite
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BasePermissions
+                Effect: Allow
+                Action:
+                  - secretsmanager:*
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                  - docdb-elastic:GetCluster
+                  - docdb-elastic:ListClusters
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - kms:DescribeKey
+                  - kms:ListAliases
+                  - kms:ListKeys
+                  - lambda:ListFunctions
+                  - rds:DescribeDBClusters
+                  - rds:DescribeDBInstances
+                  - redshift:DescribeClusters
+                  - redshift-serverless:ListWorkgroups
+                  - redshift-serverless:GetNamespace
+                  - tag:GetResources
+                Resource: "*"
+              - Sid: SARPermissions
+                Effect: Allow
+                Action:
+                  - serverlessrepo:CreateCloudFormationChangeSet
+                  - serverlessrepo:GetApplication
+                Resource: "arn:aws:serverlessrepo:*:*:applications/SecretsManager*"
+              - Sid: S3Permissions
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - "arn:aws:s3:::awsserverlessrepo-changesets*"
+                  - "arn:aws:s3:::secrets-manager-rotation-apps-*/*"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  DynamoDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: MyDynamoDBTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "ID"
+          AttributeType: "S" 
+      KeySchema:
+        - AttributeName: "ID"
+          KeyType: "HASH"
+      Tags:
+        - Key: Name
+          Value: MyDynamoDBTable
+
+  UsersTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: UsersTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "S"  
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      Tags:
+        - Key: Name
+          Value: UsersTable
+
+  PostsTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: PostsTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "S"  
+        - AttributeName: "user_id"
+          AttributeType: "S" 
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "UserIdIndex"
+          KeySchema:
+            - AttributeName: "user_id"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+      Tags:
+        - Key: Name
+          Value: PostsTable
+  
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [codepipeline.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: CodePipelinePermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [
+                  "codebuild:BatchGetBuilds",
+                  "codebuild:StartBuild",
+                  "codedeploy:CreateDeployment",
+                  "codedeploy:GetApplication",
+                  "codedeploy:GetApplicationRevision",
+                  "codedeploy:GetDeployment",
+                  "codedeploy:GetDeploymentConfig",
+                  "codedeploy:RegisterApplicationRevision",
+                  's3:GetObject',
+                  's3:PutObject',
+                  's3:DeleteObject',
+                  's3:ListBucket',
+                  'secretsmanager:GetSecretValue'
+                ]
+                Resource: '*'
+        - PolicyName: AccessToSecretsManager
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SecretARN
+
+  CodePipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "gabrielmmh-codepipeline-bucket"
+      AccessControl: Private
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [codebuild.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
+        - PolicyName: AccessToSecretsManager
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SecretARN
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: BuildProject
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: SecretARN
+            Value: !Ref SecretARN
+          - Name: MyStackName
+            Value: !Ref MyStackName
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref "AWS::Region"
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref "AWS::AccountId"
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - aws cloudformation deploy --template-file ./vpc.yaml --stack-name $MyStackName --capabilities CAPABILITY_NAMED_IAM --parameter-overrides SecretARN=$SecretARN
+          artifacts:
+            files:
+              - '**/*'
+
+  MyCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: MyPipeline3
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceInfraCode
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: InfraSourceOutput
+              Configuration:
+                Owner: !Sub "{{resolve:secretsmanager:${SecretARN}:SecretString:username}}"
+                Repo: proj_infra_cloud
+                Branch: main
+                OAuthToken: !Sub "{{resolve:secretsmanager:${SecretARN}:SecretString:token}}"
+                PollForSourceChanges: true
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: InfraSourceOutput
+              OutputArtifacts:
+                - Name: InfraBuildOutput
+              Configuration:
+                ProjectName: !Ref BuildProject
+  
+Outputs:
+  VPCId:
+    Description: "ID of the new VPC"
+    Value: !Ref MyVPC
+
+  PublicSubnetIds:
+    Description: "IDs of the public subnets"
+    Value: !Join 
+      - ", "
+      - - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+
+  LoadBalancerDNS:
+    Description: "DNS Name for the Application Load Balancer"
+    Value: !GetAtt ALB.DNSName
