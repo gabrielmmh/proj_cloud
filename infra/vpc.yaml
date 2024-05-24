@@ -461,7 +461,7 @@ Resources:
                   - secretsmanager:GetSecretValue
                 Resource: !Ref SecretARN
 
-  CodePipelineBucket:
+  CodePipelineBucket2:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "gabrielmmh-codepipeline-bucket2"
