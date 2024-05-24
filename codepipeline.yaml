@@ -10,6 +10,8 @@ Parameters:
     Type: String
 
 Resources:
+
+# CodePipeline, CodeBuild, and S3 Bucket  
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -156,6 +158,7 @@ Resources:
               Configuration:
                 ProjectName: !Ref BuildProject
 
+# Outputs to be displayed after the stack creation
 Outputs:
   PipelineUrl:
     Description: "URL of the created CodePipeline in AWS Console"

@@ -8,28 +8,28 @@ STACK_NAME="gabrielmmhStack3"
 
 # Check and install AWS CLI if not installed
 if ! command -v aws &> /dev/null; then
-    echo "AWS CLI not found, installing..."
+    echo -e "AWS CLI not found, installing...\n"
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
     unzip awscliv2.zip
     sudo ./aws/install
 else
-    echo "AWS CLI is already installed."
+    echo -e "AWS CLI is already installed.\n"
 fi
 
 # Check and install jq if not installed
 if ! command -v jq &> /dev/null; then
-    echo "jq not found, installing..."
+    echo -e "jq not found, installing...\n"
     sudo apt-get install jq -y
 else
-    echo "jq is already installed."
+    echo -e "jq is already installed.\n"
 fi
 
 # Check and install git if not installed
 if ! command -v git &> /dev/null; then
-    echo "git not found, installing..."
+    echo -e "git not found, installing...\n"
     sudo apt-get install git -y
 else
-    echo "git is already installed."
+    echo -e "git is already installed.\n"
 fi
 
 # Function to prompt user for GitHub credentials and verify them
@@ -42,10 +42,10 @@ function get_github_credentials() {
         # Verify GitHub credentials
         response=$(curl -u "$GITHUB_USERNAME:$GITHUB_TOKEN" -s https://api.github.com/user)
         if echo "$response" | grep -q "\"login\": \"$GITHUB_USERNAME\""; then
-            echo "GitHub credentials verified successfully."
+            echo -e "\nGitHub credentials verified successfully.\n"
             break
         else
-            echo "Invalid GitHub credentials. Please try again."
+            echo "\nInvalid GitHub credentials. Please try again.\n"
         fi
     done
 }
@@ -76,10 +76,10 @@ function create_github_repo() {
     local repo_name=$1
     response=$(curl -u "$GITHUB_USERNAME:$GITHUB_TOKEN" -s https://api.github.com/user/repos -d "{\"name\":\"$repo_name\"}")
     if echo "$response" | grep -q "\"full_name\": \"$GITHUB_USERNAME/$repo_name\""; then
-        echo "Repository $repo_name created."
+        echo -e "Repository $repo_name created.\n"
         return 0
     else
-        echo "Failed to create repository $repo_name. Response: $response"
+        echo -e "Failed to create repository $repo_name. Response: $response\n"
         return 1
     fi
 }
@@ -122,7 +122,7 @@ if ! github_repo_exists "proj_app_cloud" || ! github_repo_exists "proj_infra_clo
     REPOS_EXIST=false
     read -p "Do you allow the script to create GitHub repositories proj_app_cloud and proj_infra_cloud in your GitHub Account? (y/N): " create_repos
     if [[ $create_repos != "y" && $create_repos != "Y" ]]; then
-        echo "User chose not to create repositories. Exiting."
+        echo -e "\nUser chose not to create repositories. Exiting.\n"
         exit 0
     fi
 fi
@@ -131,13 +131,13 @@ fi
 if ! github_repo_exists "proj_app_cloud"; then
     create_github_repo "proj_app_cloud" && push_to_github_repo "proj_app_cloud" "./app"
 else
-    echo "Repository proj_app_cloud already exists. Skipping creation and push."
+    echo -e "Repository proj_app_cloud already exists. Skipping creation and push.\n"
 fi
 
 if ! github_repo_exists "proj_infra_cloud"; then
     create_github_repo "proj_infra_cloud" && push_to_github_repo "proj_infra_cloud" "./infra"
 else
-    echo "Repository proj_infra_cloud already exists. Skipping creation and push."
+    echo -e "Repository proj_infra_cloud already exists. Skipping creation and push.\n"
 fi
 
 # Configure AWS CLI region
@@ -145,7 +145,7 @@ aws configure set region $REGION
 
 # Clone the proj_infra_cloud repository into a specific subdirectory outside the current directory
 if [ -d "../proj_infra_cloud_clone" ]; then
-    echo "../proj_infra_cloud_clone directory already exists. Skipping clone."
+    echo -e "../proj_infra_cloud_clone directory already exists. Skipping clone.\n"
 else
     echo -e "\nCloning the proj_infra_cloud repository into ../proj_infra_cloud_clone...\n"
     mkdir ../proj_infra_cloud_clone

@@ -10,9 +10,9 @@ function delete_github_repo() {
     local repo_name=$1
     local response=$(curl -s -u "$GITHUB_USERNAME:$GITHUB_TOKEN" -X DELETE "https://api.github.com/repos/$GITHUB_USERNAME/$repo_name")
     if [[ $response == "" ]]; then
-        echo "Repository $repo_name deleted successfully."
+        echo "Repository $repo_name deleted successfully.\n"
     else
-        echo "Failed to delete repository $repo_name. Response: $response"
+        echo "Failed to delete repository $repo_name. Response: $response\n"
     fi
 }
 

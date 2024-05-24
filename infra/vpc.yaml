@@ -10,6 +10,7 @@ Parameters:
     Type: String
 
 Resources:
+# Virtual Private Cloud (VPC)
   MyVPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -20,6 +21,7 @@ Resources:
         - Key: Name
           Value: gabrielmmhVPC
 
+# Public Subnets in different Availability Zones
   PublicSubnetOne:
     Type: AWS::EC2::Subnet
     Properties:
@@ -42,6 +44,7 @@ Resources:
         - Key: Name
           Value: PublicSubnetTwo
 
+# Internet Gateway and Route Table
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -79,6 +82,7 @@ Resources:
       SubnetId: !Ref PublicSubnetTwo
       RouteTableId: !Ref PublicRouteTable
 
+# Security Group, Application Load Balancer, Target Group, and Auto Scaling Group
   MySecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -146,7 +150,8 @@ Resources:
       DesiredCapacity: '2'
       TargetGroupARNs:
         - !Ref TargetGroup
-    
+
+# Launch Configuration with UserData script
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -203,6 +208,8 @@ Resources:
           /root/.local/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 
       IamInstanceProfile: !Ref EC2InstanceProfile
+
+# Auto Scaling Policies and CloudWatch Alarms
 
   ScaleUpPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
@@ -292,6 +299,7 @@ Resources:
   #       - Name: LoadBalancer
   #         Value: !GetAtt ALB.LoadBalancerFullName
 
+# IAM Roles and Policies
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
@@ -366,6 +374,7 @@ Resources:
       Roles:
         - !Ref EC2Role
 
+# DynamoDB Tables
   DynamoDBTable:
     Type: 'AWS::DynamoDB::Table'
     Properties:
@@ -419,7 +428,8 @@ Resources:
       Tags:
         - Key: Name
           Value: PostsTable
-  
+
+# CodePipeline, CodeBuild, and S3 Bucket  
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -565,7 +575,8 @@ Resources:
                 - Name: InfraBuildOutput
               Configuration:
                 ProjectName: !Ref BuildProject
-  
+
+# Outputs to be displayed after the stack creation
 Outputs:
   VPCId:
     Description: "ID of the new VPC"
