@@ -9,7 +9,9 @@ STACK_NAME="gabrielmmhStack3"
 # Check and install AWS CLI if not installed
 if ! command -v aws &> /dev/null; then
     echo "AWS CLI not found, installing..."
-    pip install awscli
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
 else
     echo "AWS CLI is already installed."
 fi
@@ -48,6 +50,30 @@ function get_github_credentials() {
     done
 }
 
+# Get GitHub credentials from the user
+get_github_credentials
+
+# Configure Git if not configured
+if ! git config --global user.email &> /dev/null; then
+    while true; do
+        read -p "Enter your Git email: " GIT_EMAIL
+        git config --global user.email "$GIT_EMAIL"
+        
+        # Verify Git email
+        response=$(git config --global user.email)
+        if [ "$response" = "$GIT_EMAIL" ]; then
+            echo "Git email configured successfully."
+            break
+        else
+            echo "Invalid Git email. Please try again."
+        fi
+    done
+fi
+
+if ! git config --global user.name &> /dev/null; then
+    git config --global user.name "$GITHUB_USERNAME"
+fi
+
 # Create secret.json with GitHub credentials
 function create_secret_json() {
     cat <<EOF > secret.json
@@ -57,6 +83,9 @@ function create_secret_json() {
 }
 EOF
 }
+
+# Create secret.json
+create_secret_json
 
 # Function to check if GitHub repository exists
 function github_repo_exists() {
@@ -95,19 +124,6 @@ function push_to_github_repo() {
     git push -u origin main
     cd -
 }
-
-# Check if secret.json already exists
-if [ -f secret.json ]; then
-    echo "secret.json already exists."
-    GITHUB_USERNAME=$(jq -r .username secret.json)
-    GITHUB_TOKEN=$(jq -r .token secret.json)
-else
-    # Get GitHub credentials from the user
-    get_github_credentials
-
-    # Create secret.json
-    create_secret_json
-fi
 
 # Check if GitHub repositories exist and prompt user if they don't
 REPOS_EXIST=true
@@ -159,8 +175,8 @@ SECRET_ARN=$(aws secretsmanager describe-secret --secret-id $SECRET_NAME --query
 
 # Create or update CloudFormation Stack using local template
 echo -e "\nCreating or updating CloudFormation stack using local template...\n"
-
 aws cloudformation deploy --template-file ./codepipeline.yaml --stack-name $STACK_NAME --capabilities CAPABILITY_NAMED_IAM --parameter-overrides SecretARN=$SECRET_ARN MyStackName=$STACK_NAME
+
 # Wait for stack operation to complete
 echo -e "\nWaiting for stack operation to complete...\n"
 if aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
