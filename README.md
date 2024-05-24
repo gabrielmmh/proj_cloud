@@ -406,13 +406,14 @@ A estimativa de custos é baseada em preços padrão e pode variar dependendo do
 
 * **Configuração do Repositório**
 
-Durante o deploy, o script clona o repositório `proj_infra_cloud` na mesma altura do `proj_cloud`, facilitando o teste de usabilidade da CodePipeline.
+Durante o deploy, o script clona o repositório `proj_infra_cloud` na mesma altura do `proj_cloud` no diretório `proj_infra_cloud_clone`, facilitando o teste de usabilidade da CodePipeline.
 
 * **Passos para Testar a Atualização da Stack**
 
   1. **Abra o repositório `proj_infra_cloud` no VSCode**:
+
       ```sh
-      code ../proj_infra_cloud
+      code ../proj_infra_cloud_clone
       ```
 
   2. **Descomente os alarmes no arquivo `vpc.yaml`**:
