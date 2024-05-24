@@ -464,7 +464,7 @@ Resources:
   CodePipelineBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "gabrielmmh-codepipeline-bucket"
+      BucketName: !Sub "gabrielmmh-codepipeline-bucket2"
       AccessControl: Private
 
   CodeBuildServiceRole:
