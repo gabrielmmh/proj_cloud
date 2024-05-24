@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Template to create a CodePipeline for deploying VPC, ALB, Auto Scaling Group, DynamoDB, e a segurança adequada.
+Description: Template to create a CodePipeline for deploying VPC, ALB, Auto Scaling Group, DynamoDB, and proper security.
 
 Parameters:
   SecretARN:
