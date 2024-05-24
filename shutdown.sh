@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the bucket names, CloudFormation stack name, and secret name
-CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket"
+CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket2"
 STACK_NAME="gabrielmmhStack3"
 SECRET_NAME="gabrielmmh-access-token"
 

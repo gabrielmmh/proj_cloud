@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the bucket name, region, and secret name
-CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket"
+CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket2"
 REGION="us-east-1"
 SECRET_NAME="github-access-token"
 STACK_NAME="gabrielmmhStack3"
