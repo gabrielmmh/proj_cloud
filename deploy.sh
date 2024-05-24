@@ -3,7 +3,7 @@
 # Define the bucket name, region, and secret name
 CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket"
 REGION="us-east-1"
-SECRET_NAME="gabrielmmh-access-token"
+SECRET_NAME="github-access-token"
 STACK_NAME="gabrielmmhStack3"
 
 # Check and install AWS CLI if not installed
@@ -117,7 +117,7 @@ function push_to_github_repo() {
     local repo_dir=$2
     cd $repo_dir
     git init
-    git remote add origin "https://github.com/$GITHUB_USERNAME/$repo_name.git"
+    git remote add origin "https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/$GITHUB_USERNAME/$repo_name.git"
     git add .
     git commit -m "Initial commit"
     git branch -M main  # Rename branch to main
