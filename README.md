@@ -240,6 +240,10 @@ Para reduzir os custos, algumas otimizações podem ser consideradas:
 
 Estas otimizações podem ajudar a reduzir os custos operacionais sem comprometer o desempenho e a disponibilidade da aplicação.
 
+### Custos Reais
+
+A estimativa de custos é baseada em preços padrão e pode variar dependendo do uso real da infraestrutura. Monitorando os custos reais na [AWS Billing Console](https://aws.amazon.com/billing/) foi possível observar que o custo mensal previsto foi de 66,09 USD, o que está próximo da estimativa inicial. 
+
 # Instruções de Uso
 
 ### Configuração das Credenciais AWS
@@ -308,7 +312,7 @@ Estas otimizações podem ajudar a reduzir os custos operacionais sem compromete
 
 3. **Obter Credenciais de Acesso**:
 
-   - Após a criação do usuário, baixe o arquivo `.csv` com as credenciais (Access Key ID e Secret Access Key).
+   - Após a criação do usuário, entre na aba de **Security credentials** e crie uma chave de acesso para CLI e salve a chave de acesso e a chave de acesso secreta.
 
 4. **Configurar AWS CLI**:
 
@@ -355,6 +359,12 @@ Estas otimizações podem ajudar a reduzir os custos operacionais sem compromete
 
 * **Configure as credenciais GitHub**:
 
+    Faça o script `deploy.sh` ser executável:
+
+    ```sh
+    chmod +x deploy.sh
+    ```
+
     Execute o script `deploy.sh` e siga as instruções para configurar suas credenciais GitHub.
 
     ```sh
@@ -375,9 +385,10 @@ Estas otimizações podem ajudar a reduzir os custos operacionais sem compromete
 
 ### Testes de Carga com Locust
 
-* **Execute o script dos testes de carga**:
+* **Execute o script dos testes de carga**:   
 
     ```sh
+    chmod +x locust.sh
     ./locust.sh
     ```
 
@@ -424,6 +435,7 @@ Durante o deploy, o script clona o repositório `proj_infra_cloud` na mesma altu
 * **Para derrubar a infraestrutura, execute o script `shutdown.sh`**:
 
     ```sh
+    chmod +x shutdown.sh
     ./shutdown.sh
     ```
 
