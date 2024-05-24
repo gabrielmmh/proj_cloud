@@ -533,7 +533,7 @@ Resources:
       RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
-        Location: !Ref CodePipelineBucket
+        Location: !Ref CodePipelineBucket2
       Stages:
         - Name: Source
           Actions:
