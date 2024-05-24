@@ -3,7 +3,7 @@
 # Define the bucket name, region, and secret name
 CODEPIPELINE_BUCKET_NAME="gabrielmmh-codepipeline-bucket"
 REGION="us-east-1"
-SECRET_NAME="github-access-token"
+SECRET_NAME="gabrielmmh-access-token"
 STACK_NAME="gabrielmmhStack3"
 
 # Check and install AWS CLI if not installed
